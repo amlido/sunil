@@ -339,10 +339,6 @@ class Controller(object):
                 raise BlendedException(exc)
         hub_package, package_hash = self._remove_root_from_jptf(hub_package)
         package = self.de_jptf(hub_package)
-        package = self.backend.get_class('intermediary')(
-                                       package_slug, content=package, 
-                                       name=package_slug, hash=package_hash)
-        
         self.save_local(package_slug, intermediary_object=package, dependency=True, account=account)
         self.download_dependencies(package)
 
@@ -353,10 +349,9 @@ class Controller(object):
         current_account = self.backend.get_current_account()
         if not intermediary_object:
             return None
-        project_dot_json = json.loads([item.content for item in intermediary_object.content if (item.name in ('_project.json', '_package.json'))][0])
+        project_dot_json = json.loads([list(item.values())[0] for item in intermediary_object if (list(item.keys())[0] == '_project.json')][0])
         dependencies = project_dot_json.get('dependencies')
         if dependencies:
-            error_list = []
             for dependent_packages in dependencies:
                 package_name = dependent_packages.get('name')
                 version = dependent_packages.get('version')
@@ -365,10 +360,10 @@ class Controller(object):
                                          label=version,
                                          current_account=current_account)
                 except BlendedException as exc:
-                    
-                    error_list.append("\n%s while installing dependency package %s\n" % (exc.args[0].args[0].get('message'), package_name))
+                    #import pdb;pdb.set_trace()
+                    print("\n%s while installing dependency package %s\n" % (exc.args[0].args[0].get('message'), package_name))
                     continue
-            return error_list 
+
     def pull_package(self, package_name, force=False, **kwargs):
         """
         """
@@ -828,6 +823,9 @@ class Controller(object):
             try:
                 hub_package, package_hash = self._remove_root_from_jptf(hub_package)
                 package = self.de_jptf(hub_package)
+                package = self.backend.get_class('intermediary')(
+                                       package_slug, content=package, 
+                                       name=package_slug, hash=package_hash)
             except BlendedException as exc:
                 raise BlendedException(exc)
             try:
@@ -993,6 +991,7 @@ class Controller(object):
         #package_id = kwargs.get('package_id')
         #draft = kwargs.get('draft')
         #label = kwargs.get('label')
+        #import pdb; pdb.set_trace()
         intermediary_object = kwargs.get('intermediary_object')
         is_draft = kwargs.get('draft')
         version = kwargs.get('version')
@@ -1236,7 +1235,7 @@ class Controller(object):
 
         project_json = package.get('_project.json', {})
         if project_json:
-            import pdb;pdb.set_trace() 
+            #import pdb;pdb.set_trace() 
             dependency_list = project_json.get('dependencies', {})
             if(dependency_list):
                 dependency_dict = self.load_dependency(dependency_list, dependency=dependency)
