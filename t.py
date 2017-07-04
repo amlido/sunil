@@ -315,6 +315,7 @@ class Controller(object):
         :param kwargs:
         :return:
         """
+        
         package = []
         hub_package = []
         label = kwargs.get('label')
@@ -337,9 +338,17 @@ class Controller(object):
                 hub_package = self.network.download_canonical(account, package_slug)
             except BlendedException as exc:
                 raise BlendedException(exc)
+            
+            info = self.network.get_canonical(account, package_slug)
+            self.backend.set_canonical(account , package_slug, info)
+            
+           
         hub_package, package_hash = self._remove_root_from_jptf(hub_package)
         package = self.de_jptf(hub_package)
-        self.save_local(package_slug, intermediary_object=package, dependency=True, account=account)
+        package = self.backend.get_class('intermediary')(
+                                       package_slug, content=package, 
+                                       name=package_slug, hash=package_hash)
+        self.save_local(package_slug, intermediary_object=package, dependency=True, current_account=current_account, account=account, version=label)
         self.download_dependencies(package)
 
 
@@ -349,7 +358,7 @@ class Controller(object):
         current_account = self.backend.get_current_account()
         if not intermediary_object:
             return None
-        project_dot_json = json.loads([list(item.values())[0] for item in intermediary_object if (list(item.keys())[0] == '_project.json')][0])
+        project_dot_json = json.loads([item.content for item in intermediary_object.content if (item.name in ('_project.json', '_package.json'))][0])
         dependencies = project_dot_json.get('dependencies')
         if dependencies:
             for dependent_packages in dependencies:
@@ -367,6 +376,7 @@ class Controller(object):
     def pull_package(self, package_name, force=False, **kwargs):
         """
         """
+        #import pdb; pdb.set_trace()
         version = kwargs.get('version')
         replace_from_local_list = kwargs.get('replace_from_local_list')
         #package_id = kwargs.get('package_id')
@@ -454,6 +464,7 @@ class Controller(object):
     def push_package(self, package_name, force=False, **kwargs):
         """
         """
+        import pdb;pdb.set_trace()
         version = kwargs.get('version')
         replace_from_hub_list = kwargs.get('replace_from_hub_list')
         package_id = kwargs.get('package_id')
@@ -495,6 +506,7 @@ class Controller(object):
         differences = self.compare_package(hub_package, package,
                                            "push", package_current_hash=package_hash,
                                            package_last_hash=local_last_hash)
+      
         if differences:
             return differences
         return self.save_hub(account, package_slug, package, force=force)
@@ -507,6 +519,7 @@ class Controller(object):
         :param package:
         :return:
         """
+        import pdb;pdb.set_trace()
         try:
             assert type(project_object) == list
             for index, item in enumerate(project_object):
@@ -551,8 +564,9 @@ class Controller(object):
         :param package:
         :return:
         """
+        import pdb;pdb.set_trace()
         hashes = []
-        hashed_package = self.file_hash(package)
+        hashed_package = self.file_hash(package.content)
         for item in hashed_package:
               hashes.append(item['hash'])
 
@@ -641,6 +655,9 @@ class Controller(object):
         length_of_url = len(url_split)
         theme = url_split[0]
         version = url_split[1]
+        if version=='blendeddefault':
+            version = None
+            pass
         template = url_split[2]
         if length_of_url == 4:
             q_string = url_split[3]
@@ -823,9 +840,6 @@ class Controller(object):
             try:
                 hub_package, package_hash = self._remove_root_from_jptf(hub_package)
                 package = self.de_jptf(hub_package)
-                package = self.backend.get_class('intermediary')(
-                                       package_slug, content=package, 
-                                       name=package_slug, hash=package_hash)
             except BlendedException as exc:
                 raise BlendedException(exc)
             try:
@@ -923,6 +937,7 @@ class Controller(object):
         it will load the intermediary project object in the jptf structure or in the proper context structure of the json format
         it will call the backend based on the backend name passed to it.for default it will use memory ...#todo
         """
+        #import pdb; pdb.set_trace()
         package = {}
         current_account = self.backend.get_current_account()
         if package_name:
@@ -935,7 +950,18 @@ class Controller(object):
                 package_slug = identifiers[0]
 
         try:
-            package = self.backend.get_package(package_name, dependency=dependency)
+            if version=='draft':
+                package = self.backend.get_package(package_name, dependency=dependency)
+            elif version == "canonical":
+                info = self.backend.get_canonical(account, package_slug)
+                if info:
+                    package = self.backend.get_package(package_name, dependency=dependency, version = info)
+                else:
+                    info = self.network.get_canonical(account, package_slug)
+                    self.backend.set_canonical(account , package_slug, info)
+                    package = self.backend.get_package(package_name, dependency=dependency, version = info.to_dict()['label'])
+            else:
+                package = self.backend.get_package(package_name, dependency=dependency, version=version)
         except FileNotFoundError:
             if version == 'draft':
                 hub_jptf = self.network.download_draft(account, package_slug)
@@ -948,7 +974,22 @@ class Controller(object):
                                 intermediary_object=hub_package,
                                 account=account, current_account=current_account,
                                 draft=True)
+                package = self.backend.get_package(package_name, dependency=dependency)
+            elif version == "canonical":
+                hub_jptf = self.network.download_canonical(account, package_slug)# account, version will also be here
+                hub_jptf, package_hash = self._remove_root_from_jptf(hub_jptf)
+                hub_package = self.de_jptf(hub_jptf)
+                hub_package = self.backend.get_class('intermediary')(
+                                       package_slug, content=hub_package, 
+                                       name=package_slug, hash=package_hash)
 
+                self.save_local(package_slug,
+                                intermediary_object=hub_package,
+                                account=account, current_account=current_account,
+                                version=version, dependency=dependency)
+                #package_name = os.path.join(package_name, version)
+
+                package = self.backend.get_package(package_name, dependency=dependency, version=version)
             else:
                 hub_jptf = self.network.download(account, package_slug, version)# account, version will also be here
                 hub_jptf, package_hash = self._remove_root_from_jptf(hub_jptf)
@@ -961,8 +1002,9 @@ class Controller(object):
                                 intermediary_object=hub_package,
                                 account=account, current_account=current_account,
                                 version=version, dependency=dependency)
+                #package_name = os.path.join(package_name, version)
 
-            package = self.backend.get_package(package_name, dependency=dependency)
+                package = self.backend.get_package(package_name, dependency=dependency, version=version)
                         
         if format == "jptf":            
             return self.as_jptf(package)
@@ -998,17 +1040,18 @@ class Controller(object):
         current_account = kwargs.get('current_account')
         dependency = kwargs.get('dependency')
         account_name = kwargs.get('account')
+        
         try:
             if is_draft:
                 self.backend.save_local(package_slug, intermediary_object, draft=is_draft)
-            elif dependency:
+            elif dependency and version:
                 package_name = os.path.join(account_name, package_slug)
-                self.backend.save_local(package_name, intermediary_object, dependency=dependency)
+                self.backend.save_local(package_name, intermediary_object, dependency=dependency, version=version)
             elif account_name != current_account:
                 package_name = os.path.join(account_name, package_slug)
-                self.backend.save_local(package_name, intermediary_object, owner=False)
+                self.backend.save_local(package_name, intermediary_object, owner=False, version=version)
             else:
-                self.backend.save_local(package_slug, intermediary_object)
+                self.backend.save_local(package_slug, intermediary_object, version=version)
 
         except BlendedException as exc:
             raise BlendedException(exc)
@@ -1235,11 +1278,12 @@ class Controller(object):
 
         project_json = package.get('_project.json', {})
         if project_json:
-            #import pdb;pdb.set_trace() 
+            #import pdb;pdb.set_trace()
             dependency_list = project_json.get('dependencies', {})
             if(dependency_list):
                 dependency_dict = self.load_dependency(dependency_list, dependency=dependency)
         #project.update(dependency_dict)
+        
         package.pop('_project.json')
         package = self.order_project_dict(package)
         self.resolve(None, package, dependency_dict, None)
@@ -1331,10 +1375,12 @@ class Controller(object):
             account = dependency.get('account')
             dep_alias = dependency.get('alias')
             version = dependency.get('version')
-
+            package_slug = theme_slug.rsplit("/")[1]
             if not version:
                 version = 'draft'
-
+            if version == "canonical":
+                info = self.network.get_canonical(account, package_slug)
+                self.backend.set_canonical(account , package_slug, info)
             if dep_alias in dependency_dict:
                 raise Exception("Alias: %s is not unique .please give unique alias " % dep_alias)
             self.set_backend_root
