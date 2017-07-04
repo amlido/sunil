@@ -464,6 +464,7 @@ class Controller(object):
     def push_package(self, package_name, force=False, **kwargs):
         """
         """
+        import pdb;pdb.set_trace()
         version = kwargs.get('version')
         replace_from_hub_list = kwargs.get('replace_from_hub_list')
         package_id = kwargs.get('package_id')
@@ -495,6 +496,7 @@ class Controller(object):
         except BlendedException as exc:
             raise BlendedException(exc)
         try:
+            package = self.as_jptf(package)
             package, package_hash = self.as_hash(package)
         except BlendedException as exc:
             raise BlendedException(exc)
@@ -505,6 +507,7 @@ class Controller(object):
         differences = self.compare_package(hub_package, package,
                                            "push", package_current_hash=package_hash,
                                            package_last_hash=local_last_hash)
+      
         if differences:
             return differences
         return self.save_hub(account, package_slug, package, force=force)
@@ -517,6 +520,7 @@ class Controller(object):
         :param package:
         :return:
         """
+        #import pdb;pdb.set_trace()
         try:
             assert type(project_object) == list
             for index, item in enumerate(project_object):
@@ -561,6 +565,7 @@ class Controller(object):
         :param package:
         :return:
         """
+        #import pdb;pdb.set_trace()
         hashes = []
         hashed_package = self.file_hash(package)
         for item in hashed_package:
@@ -972,7 +977,7 @@ class Controller(object):
                                 draft=True)
                 package = self.backend.get_package(package_name, dependency=dependency)
             elif version == "canonical":
-                hub_jptf = self.network.download_canonical(account, package_slug)
+                hub_jptf = self.network.download_canonical(account, package_slug)# account, version will also be here
                 hub_jptf, package_hash = self._remove_root_from_jptf(hub_jptf)
                 hub_package = self.de_jptf(hub_jptf)
                 hub_package = self.backend.get_class('intermediary')(
@@ -983,9 +988,9 @@ class Controller(object):
                                 intermediary_object=hub_package,
                                 account=account, current_account=current_account,
                                 version=version, dependency=dependency)
-                
-                package = self.backend.get_package(package_name, dependency=dependency, version=version)
+                #package_name = os.path.join(package_name, version)
 
+                package = self.backend.get_package(package_name, dependency=dependency, version=version)
             else:
                 hub_jptf = self.network.download(account, package_slug, version)# account, version will also be here
                 hub_jptf, package_hash = self._remove_root_from_jptf(hub_jptf)
